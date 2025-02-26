@@ -186,7 +186,7 @@ document.getElementById('restaurantForm').addEventListener('submit', async funct
   };
 
   try {
-    const response = await fetch('http://localhost:3000/api/restaurants', {
+    const response = await fetch('https://restaurants-data-ax9v.onrender.com', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestBody)
