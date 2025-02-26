@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WhyCookIn Restaurant</title>
+  <link rel="icon" href="logo.jpg" type="image/jpg">
+  <link rel="stylesheet" href="styles.css"/>
+  <!-- Kakao Maps JavaScript API (use your JS key, not REST key) -->
+  <script type="text/javascript" 
+    src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=c8073a6f116f0517020b3c68e2f81487&libraries=services">
+  </script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #map { width: 100%; height: 350px; margin-bottom: 1em; }
+    #searchWrapper { margin-bottom: 1em; }
+    #placesList li { cursor: pointer; margin-bottom: 5px; }
+    #placesList li:hover { background: #f0f0f0; }
+    label { display: block; margin-top: 10px; }
+    fieldset { margin-bottom: 10px; }
+    .checkboxes label { display: inline-block; margin-right: 1em; }
+    #message { margin-top: 1em; font-weight: bold; }
+  </style>
+</head>
+<body>
+<h1>Add a New Restaurant (Kakao Search)</h1>
+
+<!-- Map Display -->
+<div id="map"></div>
+
+<!-- Search UI -->
+<div id="searchWrapper">
+  <input type="text" id="keyword" placeholder="Search restaurant or address..." style="width: 250px;">
+  <button onclick="searchPlaces()">Search</button>
+</div>
+
+<!-- Results List -->
+<ul id="placesList"></ul>
+
+<form id="restaurantForm">
+  <fieldset>
+    <legend>Restaurant Info</legend>
+    <p>
+      <label for="name">Name</label>
+      <input type="text" id="name" required />
+    </p>
+    <!-- We'll store the final address from the Kakao search in this field: -->
+    <p>
+      <label for="address">Selected Address</label>
+      <input type="text" id="address" required />
+    </p>
+  </fieldset>
+  
+  <fieldset>
+    <legend>Attributes</legend>
+    <div class="checkboxes">
+      <label><input type="checkbox" id="english_speaking" /> English Speaking</label>
+      <label><input type="checkbox" id="vegan" /> Vegan</label>
+      <label><input type="checkbox" id="vegetarian" /> Vegetarian</label>
+      <label><input type="checkbox" id="no_pork" /> No Pork</label>
+      <label><input type="checkbox" id="halal" /> Halal</label>
+      <label><input type="checkbox" id="no_beef" /> No Beef</label>
+      <label><input type="checkbox" id="gluten_free" /> Gluten Free</label>
+      <label><input type="checkbox" id="allows_foreigners" /> Allows Foreigners</label>
+    </div>
+  </fieldset>
+  
+  <button type="submit">Submit to Server</button>
+</form>
+
+<div id="message"></div>
+
+<script>
+// 1) Initialize Kakao Map
+var mapContainer = document.getElementById('map');
+var mapOptions = { 
+    center: new kakao.maps.LatLng(37.5665, 126.9780), // Default center (Seoul)
+    level: 5 // Zoom level
+};
+var map = new kakao.maps.Map(mapContainer, mapOptions); 
+
+// 2) Prepare Kakao Places
+var ps = new kakao.maps.services.Places();  // For keyword search
+var markers = []; // hold search result markers
+
+function searchPlaces() {
+  var keyword = document.getElementById('keyword').value.trim();
+  if (!keyword) {
+    alert('Please enter a keyword!');
+    return;
+  }
+  // Keyword search using Kakao's Places API (JavaScript)
+  ps.keywordSearch(keyword, placesSearchCB); 
+}
+
+function placesSearchCB(data, status, pagination) {
+  if (status === kakao.maps.services.Status.OK) {
+    displayPlaces(data);
+  } else if (status === kakao.maps.services.Status.ZERO_RESULT) {
+    alert('No search results found.');
+  } else {
+    alert('Error occurred during search.');
+  }
+}
+
+function displayPlaces(places) {
+  clearMarkers();
+  
+  var listEl = document.getElementById('placesList');
+  listEl.innerHTML = '';
+  
+  for (var i=0; i<places.length; i++) {
+    var place = places[i];
+    var coords = new kakao.maps.LatLng(place.y, place.x);
+    
+    var marker = new kakao.maps.Marker({
+      map: map,
+      position: coords
+    });
+    markers.push(marker);
+    
+    kakao.maps.event.addListener(marker, 'click', function() {
+      map.setCenter(this.getPosition());
+    });
+    
+    var li = document.createElement('li');
+    li.textContent = place.place_name + ' / ' + place.road_address_name;
+    li.onclick = (function(pl, mk) {
+      return function() {
+        // Fill the form fields
+        document.getElementById('address').value = pl.road_address_name || pl.address_name;
+        document.getElementById('name').value = pl.place_name; // optional
+        map.setCenter(mk.getPosition());
+      };
+    })(place, marker);
+    
+    listEl.appendChild(li);
+  }
+  
+  // Fit map to results
+  var bounds = new kakao.maps.LatLngBounds();
+  for (var j=0; j<places.length; j++){
+    bounds.extend(new kakao.maps.LatLng(places[j].y, places[j].x));
+  }
+  map.setBounds(bounds);
+}
+
+function clearMarkers() {
+  for (var i=0; i<markers.length; i++) {
+    markers[i].setMap(null);
+  }
+  markers = [];
+}
+
+// 4) Handle form submission
+document.getElementById('restaurantForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  
+  var name = document.getElementById('name').value.trim();
+  var address = document.getElementById('address').value.trim();
+
+  var english_speaking = document.getElementById('english_speaking').checked;
+  var vegan = document.getElementById('vegan').checked;
+  var vegetarian = document.getElementById('vegetarian').checked;
+  var no_pork = document.getElementById('no_pork').checked;
+  var halal = document.getElementById('halal').checked;
+  var no_beef = document.getElementById('no_beef').checked;
+  var gluten_free = document.getElementById('gluten_free').checked;
+  var allows_foreigners = document.getElementById('allows_foreigners').checked;
+
+  if (!name || !address) {
+    alert('Please select a place or fill address');
+    return;
+  }
+  
+  var requestBody = {
+    name,
+    address,
+    english_speaking,
+    vegan,
+    vegetarian,
+    no_pork,
+    halal,
+    no_beef,
+    gluten_free,
+    allows_foreigners
+  };
+
+  try {
+    const response = await fetch('http://localhost:3000/api/restaurants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (!response.ok) {
+      let errorMsg = await response.text();
+      throw new Error(errorMsg);
+    }
+    let result = await response.json();
+    
+    document.getElementById('message').style.color = 'green';
+    document.getElementById('message').textContent = 'Restaurant added/updated with ID: ' + (result.id || '(unknown)');
+    
+    // Reset form
+    this.reset();
+    clearMarkers();
+    document.getElementById('placesList').innerHTML = '';
+  } catch (err) {
+    console.error('Error:', err);
+    document.getElementById('message').style.color = 'red';
+    document.getElementById('message').textContent = 'Error: ' + err.message;
+  }
+});
+</script>
+</body>
+</html>
