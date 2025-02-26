@@ -12,11 +12,10 @@ app.use(express.json());
 
 // 2) PostgreSQL connection
 const client = new Client({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'WhyCookIn_RestaurantDB',
-  password: '020218',
-  port: 5432
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 client.connect();
 
