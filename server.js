@@ -182,19 +182,47 @@ app.get('/api/restaurants', async (req, res) => {
       halal,
       no_beef,
       gluten_free,
-      allows_foreigners
+      allows_foreigners,
+      minLat, 
+      maxLat, 
+      minLon, 
+      maxLon
     } = req.query;
 
+    // Parse bounding box floats
+    const minLatF = parseFloat(minLat);
+    const maxLatF = parseFloat(maxLat);
+    const minLonF = parseFloat(minLon);
+    const maxLonF = parseFloat(maxLon);
+
+    // We'll build a list of conditions and values for the WHERE clause
     let conditions = [];
     let values = [];
 
-    // 1) Partial name match (case-insensitive)
+    // A) If bounding box is provided, filter geometry
+    //    "geom::geometry && ST_MakeEnvelope(xMin, yMin, xMax, yMax, SRID)"
+    //    Note the order: ST_MakeEnvelope(minLon, minLat, maxLon, maxLat, 4326)
+    if (!isNaN(minLatF) && !isNaN(maxLatF) && !isNaN(minLonF) && !isNaN(maxLonF)) {
+      conditions.push(`
+        geom::geometry && ST_MakeEnvelope(
+          $${values.length+1}, 
+          $${values.length+2}, 
+          $${values.length+3}, 
+          $${values.length+4}, 
+          4326
+        )
+      `);
+      // The order here is [minLon, minLat, maxLon, maxLat]
+      values.push(minLonF, minLatF, maxLonF, maxLatF);
+    }
+
+    // B) Partial name match (case-insensitive)
     if (name) {
       conditions.push(`name ILIKE $${values.length + 1}`);
       values.push(`%${name}%`);
     }
 
-    // Helper: parse 'true'/'false' from query strings into boolean
+    // Helper: parse 'true'/'false' from query strings into booleans
     function parseBool(val) {
       if (val === 'true') return true;
       if (val === 'false') return false;
@@ -205,12 +233,12 @@ app.get('/api/restaurants', async (req, res) => {
     function addBoolCondition(column, queryVal) {
       const parsed = parseBool(queryVal);
       if (parsed !== null) {
-        // e.g. "english_speaking = true"
         conditions.push(`${column} = $${values.length + 1}`);
         values.push(parsed);
       }
     }
 
+    // Add conditions for each boolean attribute
     addBoolCondition('english_speaking', english_speaking);
     addBoolCondition('vegan', vegan);
     addBoolCondition('vegetarian', vegetarian);
@@ -220,17 +248,37 @@ app.get('/api/restaurants', async (req, res) => {
     addBoolCondition('gluten_free', gluten_free);
     addBoolCondition('allows_foreigners', allows_foreigners);
 
-    // Build final SQL
-    let sql = 'SELECT * FROM restaurants';
+    // C) Build final SELECT
+    //    We extract lat/lon from geom using ST_X, ST_Y for easy marker placement
+    let sql = `
+      SELECT
+        id,
+        name,
+        english_speaking,
+        vegan,
+        vegetarian,
+        no_pork,
+        halal,
+        no_beef,
+        gluten_free,
+        allows_foreigners,
+        full_address,
+        ST_X(geom::geometry) AS lon,
+        ST_Y(geom::geometry) AS lat
+      FROM restaurants
+    `;
+
+    // Add WHERE if we have any conditions
     if (conditions.length > 0) {
       sql += ' WHERE ' + conditions.join(' AND ');
     }
+
     sql += ' ORDER BY id ASC';
 
-    // 2) Execute
+    // D) Execute
     const { rows } = await client.query(sql, values);
 
-    // 3) Return array of matching rows
+    // E) Return array of matching rows (each has lat, lon, booleans, etc.)
     res.json(rows);
 
   } catch (err) {
