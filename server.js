@@ -179,6 +179,56 @@ app.get('/api/discount-events', async (req, res) => {
   }
 });
 
+app.post('/api/stores', async (req, res) => {
+  const { store_name, address } = req.body;
+});
+
+// GET /api/stores
+// Usage: /api/stores?searchName=MyStore
+// If ?searchName is present, we try to find a store by partial match on store_name.
+// If we find one, return { exists: true, id, store_name, address }.
+// Otherwise, return { exists: false }.
+// If no searchName is provided, just return all stores.
+app.get('/api/stores', async (req, res) => {
+  try {
+    const { searchName } = req.query;
+
+    // If no searchName, return all stores (or you could choose to return an error instead).
+    if (!searchName) {
+      const allStoresQuery = 'SELECT * FROM stores ORDER BY id ASC';
+      const { rows } = await client.query(allStoresQuery);
+      return res.json(rows); // an array of all stores
+    }
+
+    // Otherwise, search for a store by name (case-insensitive, partial match).
+    // If you'd prefer exact match, use: store_name ILIKE $1
+    const searchSql = `
+      SELECT id, store_name, address
+      FROM stores
+      WHERE store_name ILIKE $1
+      LIMIT 1
+    `;
+    const { rows } = await client.query(searchSql, [`%${searchName}%`]);
+
+    if (rows.length === 0) {
+      // No matching store found
+      return res.json({ exists: false });
+    }
+
+    // Found at least one store; return the first match
+    const store = rows[0];
+    return res.json({
+      exists: true,
+      id: store.id,
+      store_name: store.store_name,
+      address: store.address
+    });
+  } catch (err) {
+    console.error('Error in GET /api/stores:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 app.post('/api/discount-events', async (req, res) => {
   try {
     const {

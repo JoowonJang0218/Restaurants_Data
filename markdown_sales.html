@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WhyCookIn - Discount/Markdown Sales</title>
+  <link rel="icon" href="logo.jpg" type="image/jpg">
+  <link rel="stylesheet" href="styles.css"/>
+
+  <!-- Kakao Maps JavaScript API -->
+  <script 
+    type="text/javascript" 
+    src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=c8073a6f116f0517020b3c68e2f81487&libraries=services">
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <img src="logo.jpg" alt="Site Logo" id="siteLogo">
+    <h1>Markdown Sales</h1>
+  </header>
+
+  <!-- Map Display -->
+  <div id="map"></div>
+  
+  <!-- Search UI -->
+  <div id="searchWrapper">
+    <input type="text" id="keyword" placeholder="Search store or address..." />
+    <button onclick="searchPlaces()">Search</button>
+  </div>
+  
+  <!-- Results List -->
+  <ul id="placesList"></ul>
+  
+  <!-- If store not in DB, ask user if they want to add it -->
+  <div id="storePrompt" style="display: none;">
+    <p>This store is not in our database. Do you want to add it?</p>
+    <button onclick="showStoreForm()">Yes, Add Store</button>
+    <button onclick="cancelStorePrompt()">No</button>
+  </div>
+
+  <!-- Store Creation Form -->
+  <form id="storeForm" style="display: none;" onsubmit="submitStoreForm(event)">
+    <fieldset>
+      <legend>Add New Store</legend>
+      <p>
+        <label for="storeName">Store Name:</label>
+        <input type="text" id="storeName" required />
+      </p>
+      <p>
+        <label for="storeAddress">Address:</label>
+        <input type="text" id="storeAddress" required />
+      </p>
+    </fieldset>
+    <button type="submit">Save Store</button>
+  </form>
+
+  <!-- Discount Event Form -->
+  <form id="discountForm" style="display: none;" onsubmit="submitDiscountForm(event)">
+    <fieldset>
+      <legend>Add Discount Info</legend>
+      <input type="hidden" id="selectedStoreId" />
+
+      <p>
+        <label for="itemName">Item Name:</label>
+        <input type="text" id="itemName" required />
+      </p>
+      <p>
+        <label for="itemCategory">Item Category:</label>
+        <input type="text" id="itemCategory" />
+      </p>
+      <p>
+        <label for="reason">Reason:</label>
+        <input type="text" id="reason" placeholder="Near expiry, damaged, etc." />
+      </p>
+      <p>
+        <label for="originalPrice">Original Price:</label>
+        <input type="number" id="originalPrice" step="0.01" required />
+      </p>
+      <p>
+        <label for="discountPrice">Discount Price:</label>
+        <input type="number" id="discountPrice" step="0.01" />
+      </p>
+      <p>
+        <label for="discountPercentage">Discount Percentage:</label>
+        <input type="number" id="discountPercentage" step="0.01" />
+      </p>
+      <p>
+        <label for="discountStart">Discount Start:</label>
+        <input type="datetime-local" id="discountStart" />
+      </p>
+      <p>
+        <label for="discountEnd">Discount End:</label>
+        <input type="datetime-local" id="discountEnd" />
+      </p>
+      <p>
+        <label for="expirationDate">Expiration Date:</label>
+        <input type="date" id="expirationDate" />
+      </p>
+      <p>
+        <label for="quantity">Quantity:</label>
+        <input type="number" id="quantity" />
+      </p>
+      <p>
+        <label for="itemImageUrl">Item Image URL:</label>
+        <input type="url" id="itemImageUrl" />
+      </p>
+      <p>
+        <label for="storeHours">Store Hours:</label>
+        <input type="text" id="storeHours" placeholder="e.g. 9AM - 10PM" />
+      </p>
+      <p>
+        <label for="dietaryTags">Dietary Tags (comma separated):</label>
+        <input type="text" id="dietaryTags" placeholder="e.g. vegan,gluten-free" />
+      </p>
+    </fieldset>
+    <button type="submit">Add Discount</button>
+  </form>
+
+  <!-- Feedback Message -->
+  <div id="message"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// 1) Initialize Kakao Map
+// ---------------------------------------------------------------------------
+var mapContainer = document.getElementById('map');
+var mapOptions = { 
+    center: new kakao.maps.LatLng(37.5665, 126.9780), // Default center (Seoul)
+    level: 5
+};
+var map = new kakao.maps.Map(mapContainer, mapOptions); 
+
+// Prepare Kakao Places
+var ps = new kakao.maps.services.Places();  
+var markers = [];
+
+// ---------------------------------------------------------------------------
+// 2) Search function (similar to your restaurant code)
+// ---------------------------------------------------------------------------
+function searchPlaces() {
+  var keyword = document.getElementById('keyword').value.trim();
+  if (!keyword) {
+    alert('Please enter a keyword!');
+    return;
+  }
+  ps.keywordSearch(keyword, placesSearchCB);
+}
+
+function placesSearchCB(data, status, pagination) {
+  if (status === kakao.maps.services.Status.OK) {
+    displayPlaces(data);
+  } else if (status === kakao.maps.services.Status.ZERO_RESULT) {
+    alert('No search results found.');
+  } else {
+    alert('Error occurred during search.');
+  }
+}
+
+function displayPlaces(places) {
+  clearMarkers();
+  
+  var listEl = document.getElementById('placesList');
+  listEl.innerHTML = '';
+  
+  for (var i = 0; i < places.length; i++) {
+    var place = places[i];
+    var coords = new kakao.maps.LatLng(place.y, place.x);
+    
+    var marker = new kakao.maps.Marker({
+      map: map,
+      position: coords
+    });
+    markers.push(marker);
+    
+    kakao.maps.event.addListener(marker, 'click', function() {
+      map.setCenter(this.getPosition());
+    });
+    
+    var li = document.createElement('li');
+    li.textContent = place.place_name + ' / ' + place.road_address_name;
+    li.style.cursor = 'pointer';
+    li.onclick = (function(pl) {
+      return function() {
+        map.setCenter(coords);
+        onSelectPlace(pl);
+      };
+    })(place);
+    
+    listEl.appendChild(li);
+  }
+  
+  // Fit map to results
+  var bounds = new kakao.maps.LatLngBounds();
+  for (var j = 0; j < places.length; j++){
+    bounds.extend(new kakao.maps.LatLng(places[j].y, places[j].x));
+  }
+  map.setBounds(bounds);
+}
+
+function clearMarkers() {
+  for (var i = 0; i < markers.length; i++) {
+    markers[i].setMap(null);
+  }
+  markers = [];
+}
+
+// ---------------------------------------------------------------------------
+// 3) Handling place selection
+// ---------------------------------------------------------------------------
+var selectedPlace = null;
+
+async function onSelectPlace(place) {
+  selectedPlace = place; 
+  // Check if the store (place_name) already exists in DB
+  // We'll call an endpoint e.g., GET /api/stores?searchName=xxx
+  // (YOU NEED TO IMPLEMENT THIS ENDPOINT in your server)
+
+  const storeExists = await checkStoreExists(place.place_name);
+  
+  if (!storeExists) {
+    // Prompt user if they want to add the store
+    document.getElementById('storePrompt').style.display = 'block';
+    
+    // Pre-fill store form with place info
+    document.getElementById('storeName').value = place.place_name;
+    document.getElementById('storeAddress').value = place.road_address_name || place.address_name;
+
+  } else {
+    // If store already in DB, let user proceed to discount form
+    // We'll store the store's ID so we can reference it later
+    document.getElementById('storePrompt').style.display = 'none';
+    document.getElementById('storeForm').style.display = 'none';
+    document.getElementById('discountForm').style.display = 'block';
+
+    // storeExists should return the actual store object or ID
+    // so we can set it as the hidden input's value
+    document.getElementById('selectedStoreId').value = storeExists.id;
+
+    displayMessage('Store found in DB. You can add discount info now.', 'green');
+  }
+}
+
+// Example function calling a hypothetical endpoint GET /api/stores?searchName=...
+async function checkStoreExists(storeName) {
+  try {
+    const response = await fetch(`https://YOUR_RENDER_APP_URL/api/stores?searchName=${encodeURIComponent(storeName)}`);
+    if (!response.ok) {
+      // If 404 or 500, interpret as store not found or server error
+      return false;
+    }
+    const data = await response.json();
+    // Expect the endpoint to return either { exists: false } or { exists: true, id: 123, ... }
+    if (data.exists) {
+      return data; // Return the entire object for the ID
+    } else {
+      return false;
+    }
+  } catch (err) {
+    console.error('Error checking store:', err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 4) If store not found, user can add it
+// ---------------------------------------------------------------------------
+function showStoreForm() {
+  document.getElementById('storePrompt').style.display = 'none';
+  document.getElementById('storeForm').style.display = 'block';
+}
+
+function cancelStorePrompt() {
+  document.getElementById('storePrompt').style.display = 'none';
+  displayMessage('Store not added. Please select another store or search again.', 'red');
+}
+
+// POST /api/stores to create a new store
+async function submitStoreForm(e) {
+  e.preventDefault();
+  
+  const storeName = document.getElementById('storeName').value.trim();
+  const storeAddress = document.getElementById('storeAddress').value.trim();
+  
+  if (!storeName || !storeAddress) {
+    alert('Please fill out store name and address.');
+    return;
+  }
+  
+  try {
+    // YOU NEED THIS ENDPOINT ON YOUR SERVER
+    const response = await fetch('https://YOUR_RENDER_APP_URL/api/stores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ store_name: storeName, address: storeAddress })
+    });
+    
+    if (!response.ok) {
+      let errText = await response.text();
+      throw new Error(errText);
+    }
+    
+    // Suppose the server returns { success: true, id: newStoreId }
+    const result = await response.json();
+    displayMessage(`Store added with ID: ${result.id}`, 'green');
+    
+    // Hide store form, show discount form
+    document.getElementById('storeForm').style.display = 'none';
+    document.getElementById('discountForm').style.display = 'block';
+    
+    // Fill hidden selectedStoreId
+    document.getElementById('selectedStoreId').value = result.id;
+    
+  } catch (err) {
+    console.error('Error adding store:', err);
+    displayMessage('Error adding store: ' + err.message, 'red');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5) Add discount info for the (now-known) store
+// ---------------------------------------------------------------------------
+async function submitDiscountForm(e) {
+  e.preventDefault();
+  
+  const storeId = document.getElementById('selectedStoreId').value;
+  if (!storeId) {
+    alert('No valid store selected/created yet.');
+    return;
+  }
+  
+  // Gather discount fields
+  const itemName = document.getElementById('itemName').value.trim();
+  const itemCategory = document.getElementById('itemCategory').value.trim();
+  const reason = document.getElementById('reason').value.trim();
+  const originalPrice = parseFloat(document.getElementById('originalPrice').value);
+  const discountPrice = document.getElementById('discountPrice').value ? parseFloat(document.getElementById('discountPrice').value) : null;
+  const discountPercentage = document.getElementById('discountPercentage').value ? parseFloat(document.getElementById('discountPercentage').value) : null;
+  const discountStart = document.getElementById('discountStart').value;
+  const discountEnd = document.getElementById('discountEnd').value;
+  const expirationDate = document.getElementById('expirationDate').value;
+  const quantity = document.getElementById('quantity').value ? parseInt(document.getElementById('quantity').value) : null;
+  const itemImageUrl = document.getElementById('itemImageUrl').value.trim();
+  const storeHours = document.getElementById('storeHours').value.trim();
+  const dietaryTagsRaw = document.getElementById('dietaryTags').value.trim();
+  // Convert comma-separated tags into array
+  const dietaryTags = dietaryTagsRaw ? dietaryTagsRaw.split(',').map(t => t.trim()) : null;
+  
+  // POST to /api/discount-events
+  try {
+    const response = await fetch('https://YOUR_RENDER_APP_URL/api/discount-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        store_id: parseInt(storeId),
+        item_name: itemName,
+        item_category: itemCategory,
+        reason: reason,
+        original_price: originalPrice,
+        discount_price: discountPrice,
+        discount_percentage: discountPercentage,
+        discount_start: discountStart ? new Date(discountStart).toISOString() : null,
+        discount_end: discountEnd ? new Date(discountEnd).toISOString() : null,
+        expiration_date: expirationDate || null,
+        quantity: quantity,
+        item_image_url: itemImageUrl,
+        posted_by: null, // or your user id if you have a user system
+        store_hours: storeHours,
+        dietary_tags: dietaryTags,
+        is_crowd_sourced: true,
+        avg_rating: null,
+        total_reviews: 0
+      })
+    });
+    
+    if (!response.ok) {
+      let errText = await response.text();
+      throw new Error(errText);
+    }
+    
+    const result = await response.json();
+    displayMessage(`Discount event created with ID: ${result.id}`, 'green');
+    
+    // Optionally reset the form
+    e.target.reset();
+    
+  } catch (err) {
+    console.error('Error in submitDiscountForm:', err);
+    displayMessage('Error: ' + err.message, 'red');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 6) Utility: display messages to user
+// ---------------------------------------------------------------------------
+function displayMessage(msg, color) {
+  const msgDiv = document.getElementById('message');
+  msgDiv.style.color = color || 'black';
+  msgDiv.textContent = msg;
+}
+</script>
+
+</body>
+</html>
