@@ -188,7 +188,7 @@ app.get('/api/restaurants', async (req, res) => {
     const checkSql = `
       SELECT *
       FROM restaurants
-      WHERE name ILIKE = $1
+      WHERE name ILIKE $1
       LIMIT 1
     `;
     const { rows } = await client.query(checkSql, [name]);
@@ -223,7 +223,35 @@ app.get('/api/discount-events', async (req, res) => {
 });
 
 app.post('/api/stores', async (req, res) => {
-  const { store_name, address } = req.body;
+  try {
+    const { store_name, address } = req.body;
+    
+    if (!store_name || !address) {
+      return res.status(400).json({ message: 'Missing store_name or address' });
+    }
+
+    // Insert into "stores" table
+    const insertSql = `
+      INSERT INTO stores (store_name, address)
+      VALUES ($1, $2)
+      RETURNING id, store_name, address
+    `;
+    const values = [store_name, address];
+
+    const result = await client.query(insertSql, values);
+    const newStore = result.rows[0];
+
+    // Return something like { success: true, id: newStore.id }
+    return res.json({
+      success: true,
+      id: newStore.id,
+      store_name: newStore.store_name,
+      address: newStore.address
+    });
+  } catch (err) {
+    console.error('Error in POST /api/stores:', err);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // GET /api/stores
