@@ -173,36 +173,65 @@ app.post('/api/restaurants', async (req, res) => {
 //   /api/restaurants                   --> returns all restaurants
 app.get('/api/restaurants', async (req, res) => {
   try {
-    const { name } = req.query;
+    const { 
+      name,
+      english_speaking,
+      vegan,
+      vegetarian,
+      no_pork,
+      halal,
+      no_beef,
+      gluten_free,
+      allows_foreigners
+    } = req.query;
 
-    // If no 'name' is provided, return ALL restaurants
-    if (!name) {
-      const getAllSql = 'SELECT * FROM restaurants ORDER BY id ASC';
-      const { rows } = await client.query(getAllSql);
-      return res.json(rows);  // returns an array of restaurant objects
+    let conditions = [];
+    let values = [];
+
+    // 1) Partial name match (case-insensitive)
+    if (name) {
+      conditions.push(`name ILIKE $${values.length + 1}`);
+      values.push(`%${name}%`);
     }
 
-    // Otherwise, check for an exact match on the name (case-sensitive).
-    // If you want case-insensitive, replace '=' with ILIKE and do: name ILIKE $1
-    //   plus put [name] in the query array as exactly what you want to match (perhaps with LOWER() if needed).
-    const checkSql = `
-      SELECT *
-      FROM restaurants
-      WHERE name ILIKE $1
-      LIMIT 1
-    `;
-    const { rows } = await client.query(checkSql, [name]);
-
-    if (rows.length > 0) {
-      // Found a match
-      return res.json({
-        exists: true,
-        restaurant: rows[0]
-      });
-    } else {
-      // No match
-      return res.json({ exists: false });
+    // Helper: parse 'true'/'false' from query strings into boolean
+    function parseBool(val) {
+      if (val === 'true') return true;
+      if (val === 'false') return false;
+      return null;
     }
+
+    // Helper: Add a boolean condition if param is provided
+    function addBoolCondition(column, queryVal) {
+      const parsed = parseBool(queryVal);
+      if (parsed !== null) {
+        // e.g. "english_speaking = true"
+        conditions.push(`${column} = $${values.length + 1}`);
+        values.push(parsed);
+      }
+    }
+
+    addBoolCondition('english_speaking', english_speaking);
+    addBoolCondition('vegan', vegan);
+    addBoolCondition('vegetarian', vegetarian);
+    addBoolCondition('no_pork', no_pork);
+    addBoolCondition('halal', halal);
+    addBoolCondition('no_beef', no_beef);
+    addBoolCondition('gluten_free', gluten_free);
+    addBoolCondition('allows_foreigners', allows_foreigners);
+
+    // Build final SQL
+    let sql = 'SELECT * FROM restaurants';
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    sql += ' ORDER BY id ASC';
+
+    // 2) Execute
+    const { rows } = await client.query(sql, values);
+
+    // 3) Return array of matching rows
+    res.json(rows);
 
   } catch (err) {
     console.error('Error in GET /api/restaurants:', err);
