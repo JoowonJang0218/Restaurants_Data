@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>WhyCookIn - Discount/Markdown Sales</title>
+  <title>WhyCookIn - 마감 세일 등록</title>
   <link rel="icon" href="logo.jpg" type="image/jpg">
   <link rel="stylesheet" href="styles.css"/>
 
@@ -15,10 +15,10 @@
 <body>
   <header class="site-header">
     <img src="logo.jpg" alt="Site Logo" id="siteLogo">
-    <h1>Markdown Sales</h1>
+    <h1>마감 세일 등록</h1>
 
     <button onclick="window.location.href='Restaurant_Logs.html'">
-        Go to Restaurant Logs
+      레스토랑 등록 페이지로 이동
     </button>
 
     <div class="language-switch">
@@ -28,188 +28,161 @@
     </div>
   </header>
 
-  <!-- Map Display -->
+  <!-- 지도 표시 -->
   <div id="map"></div>
   
-  <!-- Search UI -->
+  <!-- 검색 UI -->
   <div id="searchWrapper">
-    <input type="text" id="keyword" placeholder="Search store or address..." />
-    <button onclick="searchPlaces()">Search</button>
+    <input type="text" id="keyword" placeholder="가게 또는 주소를 검색하세요..." />
+    <button onclick="searchPlaces()">검색</button>
   </div>
   
-  <!-- Results List -->
+  <!-- 검색 결과 리스트 -->
   <ul id="placesList"></ul>
   
-  <!-- If store not in DB, ask user if they want to add it -->
+  <!-- DB에 가게가 없을 경우 안내 -->
   <div id="storePrompt" style="display: none;">
-    <p>This store is not in our database. Do you want to add it?</p>
-    <button onclick="showStoreForm()">Yes, Add Store</button>
-    <button onclick="cancelStorePrompt()">No</button>
+    <p>현재 이 상점(가게)이 데이터베이스에 없습니다. 새로 등록하시겠습니까?</p>
+    <button onclick="showStoreForm()">네, 상점 추가</button>
+    <button onclick="cancelStorePrompt()">아니오</button>
   </div>
 
-  <!-- Store Creation Form -->
+  <!-- 상점 추가 폼 -->
   <form id="storeForm" style="display: none;" onsubmit="submitStoreForm(event)">
     <fieldset>
-      <legend>Add New Store</legend>
+      <legend>새 상점(가게) 등록</legend>
       <p>
-        <label for="storeName">Store Name:</label>
+        <label for="storeName">상점 이름:</label>
         <input type="text" id="storeName" required />
       </p>
       <p>
-        <label for="storeAddress">Address:</label>
+        <label for="storeAddress">주소:</label>
         <input type="text" id="storeAddress" required />
       </p>
     </fieldset>
-    <button type="submit">Save Store</button>
+    <button type="submit">상점 저장</button>
   </form>
 
-  <!-- Discount Event Form -->
+  <!-- 마감세일(할인 이벤트) 등록 폼 -->
   <form id="discountForm" style="display: none;" onsubmit="submitDiscountForm(event)">
     <fieldset>
-      <legend>Add Discount Info</legend>
+      <legend>할인 정보 등록</legend>
       <input type="hidden" id="selectedStoreId" />
 
       <p>
-        <label for="itemName">Item Name:</label>
+        <label for="itemName">상품/메뉴 이름:</label>
         <input type="text" id="itemName" required />
       </p>
       <p>
-        <label for="itemCategory">Item Category:</label>
+        <label for="itemCategory">카테고리:</label>
         <input type="text" id="itemCategory" />
       </p>
       <p>
-        <label for="reason">Reason:</label>
+        <label for="reason">할인 사유:</label>
         <select id="reason">
-          <option value="Near expiry">Near expiry</option>
-          <option value="Damaged packaging">Damaged packaging</option>
-          <option value="Overstock">Overstock</option>
-          <option value="Poor Quality">Poor Quality</option>
-          <option value="Seasonal">Seasonal</option>
-          <option value="Mislabeling">Mislabeling</option>
-          <option value="Returned by Customer">Returned by Customer</option>
-          <option value="Promotion">Promotion</option>
-          <option value="Other">Other</option>
+          <option value="Near expiry">유통기한 임박</option>
+          <option value="Damaged packaging">포장 파손</option>
+          <option value="Overstock">재고 과잉</option>
+          <option value="Poor Quality">품질 문제</option>
+          <option value="Seasonal">시즈널(시즌상품)</option>
+          <option value="Mislabeling">표기 오류</option>
+          <option value="Returned by Customer">고객 반품</option>
+          <option value="Promotion">프로모션</option>
+          <option value="Other">기타</option>
         </select>
       </p>
       <p>
-        <label for="originalPrice">Original Price:</label>
+        <label for="originalPrice">원래 가격:</label>
         <input type="number" id="originalPrice" step="0.01" required />
       </p>
-      <p>you could just give us either one of discount price or percentage, we'll do the math :D</p>
+      <p>할인 가격이나 할인율 중 하나만 입력해주시면 나머지는 자동 계산됩니다.</p>
       <p>
-        <label for="discountPrice">Discount Price:</label>
+        <label for="discountPrice">할인 가격:</label>
         <input type="number" id="discountPrice" step="0.01" />
       </p>
       <p>
-        <label for="discountPercentage">Discount Percentage:</label>
+        <label for="discountPercentage">할인율(%):</label>
         <input type="number" id="discountPercentage" step="0.01" />
       </p>
       <p>
-        <label for="discountStart">Discount Start:</label>
+        <label for="discountStart">할인 시작일시:</label>
         <input type="datetime-local" id="discountStart" />
       </p>
       <p>
-        <label for="discountEnd">Discount End:</label>
+        <label for="discountEnd">할인 종료일시:</label>
         <input type="datetime-local" id="discountEnd" />
       </p>
       <p>
-        <label for="expirationDate">Expiration Date:</label>
+        <label for="expirationDate">유통기한 (선택):</label>
         <input type="date" id="expirationDate" />
       </p>
       <p>
-        <label for="quantity">Quantity:</label>
+        <label for="quantity">수량:</label>
         <input type="number" id="quantity" />
       </p>
-      <!--<p>
-        <label for="itemImageUrl">Item Image URL:</label>
-        <input type="url" id="itemImageUrl" />
-      </p>-->
+
       <fieldset id="hoursContainer">
-        <legend>Operating Hours</legend>
-        <!-- We'll start with one default row -->
+        <legend>해당 할인 운영 시간</legend>
         <div class="hoursRow">
-          <label>Start:</label>
+          <label>시작:</label>
           <input type="time" class="startTime" />
-          <label>End:</label>
+          <label>종료:</label>
           <input type="time" class="endTime" />
+          <button type="button" class="removeRowBtn" onclick="removeHoursRow(this)">X</button>
         </div>
       </fieldset>
-      <button type="button" onclick="addHoursRow()">Add Another Time Range</button>
+      <button type="button" onclick="addHoursRow()">시간대 추가</button>
 
       <fieldset>
-        <legend>Dietary Tags (select all that apply)</legend>
-        <label><input type="checkbox" name="dietaryTag" value="vegan" /> Vegan</label><br/>
-        <label><input type="checkbox" name="dietaryTag" value="halal" /> Halal</label><br/>
-        <label><input type="checkbox" name="dietaryTag" value="vegetarian" /> Vegetarian</label><br/>
-        <label><input type="checkbox" name="dietaryTag" value="no_pork" /> No Pork</label><br/>
-        <label><input type="checkbox" name="dietaryTag" value="no_beef" /> No Beef</label><br/>
-        <label><input type="checkbox" name="dietaryTag" value="gluten_free" /> Gluten Free</label><br/>
-        <!-- Add more as needed -->
+        <legend>식단 태그 (복수 선택 가능)</legend>
+        <label><input type="checkbox" name="dietaryTag" value="vegan" /> 비건</label><br/>
+        <label><input type="checkbox" name="dietaryTag" value="halal" /> 할랄</label><br/>
+        <label><input type="checkbox" name="dietaryTag" value="vegetarian" /> 베지테리언</label><br/>
+        <label><input type="checkbox" name="dietaryTag" value="no_pork" /> 돼지고기 제외</label><br/>
+        <label><input type="checkbox" name="dietaryTag" value="no_beef" /> 소고기 제외</label><br/>
+        <label><input type="checkbox" name="dietaryTag" value="gluten_free" /> 글루텐 프리</label><br/>
       </fieldset>
     </fieldset>
-    <button type="submit">Add Discount</button>
+    <button type="submit">할인 등록</button>
   </form>
 
-  <!-- Feedback Message -->
+  <!-- 메시지 출력 영역 -->
   <div id="message"></div>
 
 <script>
 // ---------------------------------------------------------------------------
-// 1) Initialize Kakao Map
+// 1) 카카오 맵 초기화
 // ---------------------------------------------------------------------------
 var mapContainer = document.getElementById('map');
 var mapOptions = { 
-    center: new kakao.maps.LatLng(37.5665, 126.9780), // Default center (Seoul)
+    center: new kakao.maps.LatLng(37.5665, 126.9780), 
     level: 5
 };
 var map = new kakao.maps.Map(mapContainer, mapOptions); 
 
-// Prepare Kakao Places
+// 카카오 플레이스 검색
 var ps = new kakao.maps.services.Places();  
 var markers = [];
 
 // ---------------------------------------------------------------------------
-// 2) Search function (similar to your restaurant code)
+// 2) 검색 기능
 // ---------------------------------------------------------------------------
 function searchPlaces() {
   var keyword = document.getElementById('keyword').value.trim();
   if (!keyword) {
-    alert('Please enter a keyword!');
+    alert('검색어를 입력해주세요!');
     return;
   }
   ps.keywordSearch(keyword, placesSearchCB);
-}
-
-function addHoursRow() {
-  const container = document.getElementById('hoursContainer');
-
-  // Create a new row
-  const newRow = document.createElement('div');
-  newRow.classList.add('hoursRow');
-
-  newRow.innerHTML = `
-    <label>Start:</label>
-    <input type="time" class="startTime" />
-    <label>End:</label>
-    <input type="time" class="endTime" />
-    <button type="button" class="removeRowBtn" onclick="removeHoursRow(this)">X</button>
-  `;
-
-  container.appendChild(newRow);
-}
-
-function removeHoursRow(buttonElement) {
-  // The button is inside the newRow div, so just remove that parent div
-  buttonElement.parentNode.remove();
 }
 
 function placesSearchCB(data, status, pagination) {
   if (status === kakao.maps.services.Status.OK) {
     displayPlaces(data);
   } else if (status === kakao.maps.services.Status.ZERO_RESULT) {
-    alert('No search results found.');
+    alert('검색 결과가 없습니다.');
   } else {
-    alert('Error occurred during search.');
+    alert('검색 중 오류가 발생했습니다.');
   }
 }
 
@@ -246,7 +219,7 @@ function displayPlaces(places) {
     listEl.appendChild(li);
   }
   
-  // Fit map to results
+  // 결과에 맞게 맵 범위 재설정
   var bounds = new kakao.maps.LatLngBounds();
   for (var j = 0; j < places.length; j++){
     bounds.extend(new kakao.maps.LatLng(places[j].y, places[j].x));
@@ -262,64 +235,75 @@ function clearMarkers() {
 }
 
 // ---------------------------------------------------------------------------
-// 3) Handling place selection
+// 시간대 추가/삭제
+// ---------------------------------------------------------------------------
+function addHoursRow() {
+  const container = document.getElementById('hoursContainer');
+
+  const newRow = document.createElement('div');
+  newRow.classList.add('hoursRow');
+
+  newRow.innerHTML = `
+    <label>시작:</label>
+    <input type="time" class="startTime" />
+    <label>종료:</label>
+    <input type="time" class="endTime" />
+    <button type="button" class="removeRowBtn" onclick="removeHoursRow(this)">X</button>
+  `;
+
+  container.appendChild(newRow);
+}
+
+function removeHoursRow(buttonElement) {
+  buttonElement.parentNode.remove();
+}
+
+// ---------------------------------------------------------------------------
+// 3) 장소 선택 후 처리
 // ---------------------------------------------------------------------------
 var selectedPlace = null;
 
 async function onSelectPlace(place) {
   selectedPlace = place; 
-  // Check if the store (place_name) already exists in DB
-  // We'll call an endpoint e.g., GET /api/stores?searchName=xxx
-  // (YOU NEED TO IMPLEMENT THIS ENDPOINT in your server)
-
+  // 가게가 DB에 있는지 확인
   const storeExists = await checkStoreExists(place.place_name);
   
   if (!storeExists) {
-    // Prompt user if they want to add the store
     document.getElementById('storePrompt').style.display = 'block';
-    
-    // Pre-fill store form with place info
     document.getElementById('storeName').value = place.place_name;
     document.getElementById('storeAddress').value = place.road_address_name || place.address_name;
 
   } else {
-    // If store already in DB, let user proceed to discount form
-    // We'll store the store's ID so we can reference it later
     document.getElementById('storePrompt').style.display = 'none';
     document.getElementById('storeForm').style.display = 'none';
     document.getElementById('discountForm').style.display = 'block';
 
-    // storeExists should return the actual store object or ID
-    // so we can set it as the hidden input's value
     document.getElementById('selectedStoreId').value = storeExists.id;
-
-    displayMessage('Store found in DB. You can add discount info now.', 'green');
+    displayMessage('이미 등록된 상점입니다. 할인을 추가할 수 있습니다.', 'green');
   }
 }
 
-// Example function calling a hypothetical endpoint GET /api/stores?searchName=...
+// DB에 상점이 있는지 확인 (예시)
 async function checkStoreExists(storeName) {
   try {
     const response = await fetch(`https://restaurants-data-ax9v.onrender.com/api/stores?searchName=${encodeURIComponent(storeName)}`);
     if (!response.ok) {
-      // If 404 or 500, interpret as store not found or server error
-      return false;
+      return false; 
     }
     const data = await response.json();
-    // Expect the endpoint to return either { exists: false } or { exists: true, id: 123, ... }
     if (data.exists) {
-      return data; // Return the entire object for the ID
+      return data; 
     } else {
       return false;
     }
   } catch (err) {
-    console.error('Error checking store:', err);
+    console.error('상점 조회 오류:', err);
     return false;
   }
 }
 
 // ---------------------------------------------------------------------------
-// 4) If store not found, user can add it
+// 4) 상점 추가
 // ---------------------------------------------------------------------------
 function showStoreForm() {
   document.getElementById('storePrompt').style.display = 'none';
@@ -328,10 +312,10 @@ function showStoreForm() {
 
 function cancelStorePrompt() {
   document.getElementById('storePrompt').style.display = 'none';
-  displayMessage('Store not added. Please select another store or search again.', 'red');
+  displayMessage('상점을 추가하지 않았습니다. 다른 검색을 진행하세요.', 'red');
 }
 
-// POST /api/stores to create a new store
+// 상점 저장
 async function submitStoreForm(e) {
   e.preventDefault();
   
@@ -339,7 +323,7 @@ async function submitStoreForm(e) {
   const storeAddress = document.getElementById('storeAddress').value.trim();
   
   if (!storeName || !storeAddress) {
-    alert('Please fill out store name and address.');
+    alert('상점 이름과 주소를 모두 입력해주세요.');
     return;
   }
   
@@ -359,55 +343,51 @@ async function submitStoreForm(e) {
     }
 
     const result = await response.json();
-    displayMessage(`Store added with ID: ${result.id}`, 'green');
+    displayMessage(`상점이 등록되었습니다. ID: ${result.id}`, 'green');
 
-    // Hide store form, show discount form
     document.getElementById('storeForm').style.display = 'none';
     document.getElementById('discountForm').style.display = 'block';
-    
-    // Fill hidden selectedStoreId
     document.getElementById('selectedStoreId').value = result.id;
     
   } catch (err) {
-    console.error('Error adding store:', err);
-    displayMessage('Error adding store: ' + err.message, 'red');
+    console.error('상점 추가 오류:', err);
+    displayMessage('상점 추가 오류: ' + err.message, 'red');
   }
 }
 
 // ---------------------------------------------------------------------------
-// 5) Add discount info for the (now-known) store
+// 5) 마감세일(할인 이벤트) 등록
 // ---------------------------------------------------------------------------
 async function submitDiscountForm(e) {
   e.preventDefault();
   
   const storeId = document.getElementById('selectedStoreId').value;
   if (!storeId) {
-    alert('No valid store selected/created yet.');
+    alert('유효한 상점 정보가 없습니다.');
     return;
   }
   
-  // Basic discount fields
   const itemName = document.getElementById('itemName').value.trim();
   const itemCategory = document.getElementById('itemCategory').value.trim();
-  
-  // Reason from the dropdown
   const reason = document.getElementById('reason').value;
-  
   const originalPrice = parseFloat(document.getElementById('originalPrice').value);
+  
+  // 하나만 입력하면 됨(둘 다 입력 가능)
   const discountPrice = document.getElementById('discountPrice').value 
-                          ? parseFloat(document.getElementById('discountPrice').value) 
-                          : null;
+                        ? parseFloat(document.getElementById('discountPrice').value) 
+                        : null;
   const discountPercentage = document.getElementById('discountPercentage').value
-                              ? parseFloat(document.getElementById('discountPercentage').value)
-                              : null;
+                            ? parseFloat(document.getElementById('discountPercentage').value)
+                            : null;
 
   const discountStart = document.getElementById('discountStart').value;
   const discountEnd = document.getElementById('discountEnd').value;
   const expirationDate = document.getElementById('expirationDate').value;
   const quantity = document.getElementById('quantity').value 
-                    ? parseInt(document.getElementById('quantity').value) 
-                    : null;
-  //const itemImageUrl = document.getElementById('itemImageUrl').value.trim();
+                  ? parseInt(document.getElementById('quantity').value) 
+                  : null;
+  
+  // 운영 시간
   const hoursRows = document.querySelectorAll('#hoursContainer .hoursRow');
   let allHours = [];
   hoursRows.forEach(row => {
@@ -417,12 +397,12 @@ async function submitDiscountForm(e) {
       allHours.push(`${startTime}-${endTime}`);
     }
   });
-  // e.g., "09:00-14:00; 16:00-20:00"
   const discountHoursStr = allHours.join('; ');
+  
+  // 식단 태그
   const checkedBoxes = document.querySelectorAll('input[name="dietaryTag"]:checked');
   const dietaryTags = Array.from(checkedBoxes).map(cb => cb.value);
 
-  // POST to /api/discount-events
   try {
     const response = await fetch('https://restaurants-data-ax9v.onrender.com/api/discount-events', {
       method: 'POST',
@@ -439,10 +419,10 @@ async function submitDiscountForm(e) {
         discount_end: discountEnd ? new Date(discountEnd).toISOString() : null,
         expiration_date: expirationDate || null,
         quantity: quantity,
-        //item_image_url: itemImageUrl,
-        posted_by: null, // or your user id if you have a user system
+        // item_image_url: null, // 필요 시 추가
+        posted_by: null,
         store_hours: discountHoursStr,
-        dietary_tags: dietaryTags, // Now an array of selected tags
+        dietary_tags: dietaryTags,
         is_crowd_sourced: true,
         avg_rating: null,
         total_reviews: 0
@@ -455,19 +435,18 @@ async function submitDiscountForm(e) {
     }
     
     const result = await response.json();
-    displayMessage(`Discount event created with ID: ${result.id}`, 'green');
+    displayMessage(`할인 이벤트가 등록되었습니다. ID: ${result.id}`, 'green');
     
-    // Optionally reset the form
     e.target.reset();
     
   } catch (err) {
-    console.error('Error in submitDiscountForm:', err);
-    displayMessage('Error: ' + err.message, 'red');
+    console.error('할인 등록 오류:', err);
+    displayMessage('할인 등록 오류: ' + err.message, 'red');
   }
 }
 
 // ---------------------------------------------------------------------------
-// 6) Utility: display messages to user
+// 6) 메시지 표시 함수
 // ---------------------------------------------------------------------------
 function displayMessage(msg, color) {
   const msgDiv = document.getElementById('message');

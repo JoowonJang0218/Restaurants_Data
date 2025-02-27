@@ -224,7 +224,7 @@ app.get('/api/discount-events', async (req, res) => {
 
 app.post('/api/stores', async (req, res) => {
   try {
-    const { store_name, address } = req.body;
+    const { store_name, address, store_hours } = req.body;
     
     if (!store_name || !address) {
       return res.status(400).json({ message: 'Missing store_name or address' });
@@ -232,11 +232,11 @@ app.post('/api/stores', async (req, res) => {
 
     // Insert into "stores" table
     const insertSql = `
-      INSERT INTO stores (store_name, address)
-      VALUES ($1, $2)
-      RETURNING id, store_name, address
+      INSERT INTO stores (store_name, address, store_hours)
+      VALUES ($1, $2, $3)
+      RETURNING id, store_name, address, store_hours
     `;
-    const values = [store_name, address];
+    const values = [store_name, address, store_hours];
 
     const result = await client.query(insertSql, values);
     const newStore = result.rows[0];
