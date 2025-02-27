@@ -167,7 +167,215 @@ app.post('/api/restaurants', async (req, res) => {
   }
 });
 
-// 5) Start server
+app.get('/api/discount-events', async (req, res) => {
+  try {
+    // Example: return everything
+    const queryText = 'SELECT * FROM discount_events ORDER BY created_at DESC';
+    const result = await client.query(queryText);
+    return res.json(result.rows);
+  } catch (err) {
+    console.error('Error in GET /api/discount-events:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+app.post('/api/discount-events', async (req, res) => {
+  try {
+    const {
+      store_id,
+      item_name,
+      item_category,
+      reason,
+      original_price,
+      discount_price,
+      discount_percentage,
+      discount_start,
+      discount_end,
+      expiration_date,
+      quantity,
+      item_image_url,
+      posted_by,
+      store_hours,
+      dietary_tags,    // must be an array if using TEXT[] in DB
+      is_crowd_sourced,
+      avg_rating,
+      total_reviews,
+    } = req.body;
+
+    // We insert the row normally; the check constraint ensures at least one discount field is present.
+    // The trigger calculates the missing field if only one discount field is provided.
+    const insertSql = `
+      INSERT INTO discount_events (
+        store_id,
+        item_name,
+        item_category,
+        reason,
+        original_price,
+        discount_price,
+        discount_percentage,
+        discount_start,
+        discount_end,
+        expiration_date,
+        quantity,
+        item_image_url,
+        posted_by,
+        store_hours,
+        dietary_tags,
+        is_crowd_sourced,
+        avg_rating,
+        total_reviews
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12, $13,
+        $14, $15, $16, $17, $18
+      )
+      RETURNING *;
+    `;
+    const values = [
+      store_id,
+      item_name,
+      item_category || null,
+      reason || null,
+      original_price,
+      discount_price,
+      discount_percentage,
+      discount_start || null,
+      discount_end || null,
+      expiration_date || null,
+      quantity || null,
+      item_image_url || null,
+      posted_by || null,
+      store_hours || null,
+      dietary_tags || null,
+      is_crowd_sourced !== undefined ? is_crowd_sourced : true,
+      avg_rating || null,
+      total_reviews || 0,
+    ];
+
+    const result = await client.query(insertSql, values);
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error in POST /api/discount-events:', err);
+    // If you violated the check constraint, you'll get a 500 with the relevant error here.
+    res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+});
+
+app.get('/api/discount-events/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const queryText = 'SELECT * FROM discount_events WHERE id = $1';
+    const result = await client.query(queryText, [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Discount event not found' });
+    }
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error in GET /api/discount-events/:id:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+app.put('/api/discount-events/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      store_id,
+      item_name,
+      item_category,
+      reason,
+      original_price,
+      discount_price,
+      discount_percentage,
+      discount_start,
+      discount_end,
+      expiration_date,
+      quantity,
+      item_image_url,
+      posted_by,
+      store_hours,
+      dietary_tags,
+      is_crowd_sourced,
+      avg_rating,
+      total_reviews,
+    } = req.body;
+
+    // We'll construct a dynamic update. Simpler approach: update all columns blindly.
+    const updateSql = `
+      UPDATE discount_events
+      SET
+        store_id = $1,
+        item_name = $2,
+        item_category = $3,
+        reason = $4,
+        original_price = $5,
+        discount_price = $6,
+        discount_percentage = $7,
+        discount_start = $8,
+        discount_end = $9,
+        expiration_date = $10,
+        quantity = $11,
+        item_image_url = $12,
+        posted_by = $13,
+        store_hours = $14,
+        dietary_tags = $15,
+        is_crowd_sourced = $16,
+        avg_rating = $17,
+        total_reviews = $18,
+        updated_at = NOW()
+      WHERE id = $19
+      RETURNING *;
+    `;
+    const values = [
+      store_id,
+      item_name,
+      item_category || null,
+      reason || null,
+      original_price,
+      discount_price,
+      discount_percentage,
+      discount_start || null,
+      discount_end || null,
+      expiration_date || null,
+      quantity || null,
+      item_image_url || null,
+      posted_by || null,
+      store_hours || null,
+      dietary_tags || null,
+      is_crowd_sourced !== undefined ? is_crowd_sourced : true,
+      avg_rating || null,
+      total_reviews || 0,
+      id
+    ];
+
+    const result = await client.query(updateSql, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Discount event not found or no changes made' });
+    }
+    return res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error in PUT /api/discount-events/:id:', err);
+    res.status(500).json({ message: err.message || 'Internal server error' });
+  }
+});
+
+app.delete('/api/discount-events/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleteSql = 'DELETE FROM discount_events WHERE id = $1 RETURNING *';
+    const result = await client.query(deleteSql, [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Discount event not found' });
+    }
+    return res.json({ success: true, deleted: result.rows[0] });
+  } catch (err) {
+    console.error('Error in DELETE /api/discount-events/:id:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// Start server
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });
