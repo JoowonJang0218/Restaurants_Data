@@ -167,6 +167,49 @@ app.post('/api/restaurants', async (req, res) => {
   }
 });
 
+// GET /api/restaurants
+// Usage examples:
+//   /api/restaurants?name=MyRestaurant --> checks exact name match
+//   /api/restaurants                   --> returns all restaurants
+app.get('/api/restaurants', async (req, res) => {
+  try {
+    const { name } = req.query;
+
+    // If no 'name' is provided, return ALL restaurants
+    if (!name) {
+      const getAllSql = 'SELECT * FROM restaurants ORDER BY id ASC';
+      const { rows } = await client.query(getAllSql);
+      return res.json(rows);  // returns an array of restaurant objects
+    }
+
+    // Otherwise, check for an exact match on the name (case-sensitive).
+    // If you want case-insensitive, replace '=' with ILIKE and do: name ILIKE $1
+    //   plus put [name] in the query array as exactly what you want to match (perhaps with LOWER() if needed).
+    const checkSql = `
+      SELECT *
+      FROM restaurants
+      WHERE name ILIKE = $1
+      LIMIT 1
+    `;
+    const { rows } = await client.query(checkSql, [name]);
+
+    if (rows.length > 0) {
+      // Found a match
+      return res.json({
+        exists: true,
+        restaurant: rows[0]
+      });
+    } else {
+      // No match
+      return res.json({ exists: false });
+    }
+
+  } catch (err) {
+    console.error('Error in GET /api/restaurants:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 app.get('/api/discount-events', async (req, res) => {
   try {
     // Example: return everything
