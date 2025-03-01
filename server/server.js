@@ -780,11 +780,28 @@ app.post('/api/community/posts', authMiddleware, async (req, res) => {
 });
 
 // UPDATE a post
-app.put('/api/community/posts/:id', async (req, res) => {
+app.put('/api/community/posts/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, subcategory_id } = req.body;
-    // If you require title/content, check for them
+
+    // 1) Find the post to see who the author is
+    const checkSql = 'SELECT author_id FROM posts WHERE id = $1';
+    const checkRes = await client.query(checkSql, [id]);
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+    const post = checkRes.rows[0];
+
+    // 2) Compare author_id with the current user, or check if role is moderator/admin
+    const isAuthor = (post.author_id === req.user.userId);
+    const isModOrAdmin = (req.user.role === 'moderator' || req.user.role === 'admin');
+
+    if (!isAuthor && !isModOrAdmin) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // 3) If authorized, perform the update
     const updateSql = `
       UPDATE posts
       SET title = $1,
@@ -795,9 +812,11 @@ app.put('/api/community/posts/:id', async (req, res) => {
     `;
     const values = [title, content, subcategory_id || null, id];
     const result = await client.query(updateSql, values);
+
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Post not found or no changes made' });
     }
+
     return res.json(result.rows[0]);
   } catch (err) {
     console.error('Error in PUT /api/community/posts/:id:', err);
@@ -806,14 +825,30 @@ app.put('/api/community/posts/:id', async (req, res) => {
 });
 
 // DELETE a post
-app.delete('/api/community/posts/:id', async (req, res) => {
+app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const deleteSql = 'DELETE FROM posts WHERE id = $1 RETURNING *';
-    const result = await client.query(deleteSql, [id]);
-    if (result.rows.length === 0) {
+
+    // 1) Find the post
+    const checkSql = 'SELECT author_id FROM posts WHERE id = $1';
+    const checkRes = await client.query(checkSql, [id]);
+    if (checkRes.rows.length === 0) {
       return res.status(404).json({ message: 'Post not found' });
     }
+    const post = checkRes.rows[0];
+
+    // 2) Check if the user is the author OR a moderator/admin
+    const isAuthor = (post.author_id === req.user.userId);
+    const isModOrAdmin = (req.user.role === 'moderator' || req.user.role === 'admin');
+
+    if (!isAuthor && !isModOrAdmin) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // 3) Delete the post
+    const deleteSql = 'DELETE FROM posts WHERE id = $1 RETURNING *';
+    const result = await client.query(deleteSql, [id]);
+
     return res.json({ success: true, deleted: result.rows[0] });
   } catch (err) {
     console.error('Error in DELETE /api/community/posts/:id:', err);
@@ -926,7 +961,8 @@ app.post('/api/community/comments', async (req, res) => {
 });
 
 // UPDATE a comment
-app.put('/api/community/comments/:id', async (req, res) => {
+// ONLY the author can edit their own comment; no moderator/admin override
+app.put('/api/community/comments/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { text } = req.body;
@@ -934,6 +970,21 @@ app.put('/api/community/comments/:id', async (req, res) => {
       return res.status(400).json({ message: 'Missing text field' });
     }
 
+    // 1) Find the comment to see who the author is
+    const checkSql = 'SELECT author_id FROM comments WHERE id = $1';
+    const checkRes = await client.query(checkSql, [id]);
+    if (checkRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+    const comment = checkRes.rows[0];
+
+    // 2) The only person who can edit is the comment's author
+    const isAuthor = (comment.author_id === req.user.userId);
+    if (!isAuthor) {
+      return res.status(403).json({ message: 'Forbidden: only the author can edit' });
+    }
+
+    // 3) Proceed with the update
     const updateSql = `
       UPDATE comments
       SET text = $1
@@ -942,9 +993,6 @@ app.put('/api/community/comments/:id', async (req, res) => {
     `;
     const values = [text, id];
     const result = await client.query(updateSql, values);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Comment not found or no changes made' });
-    }
     return res.json(result.rows[0]);
   } catch (err) {
     console.error('Error in PUT /api/community/comments/:id:', err);
@@ -953,14 +1001,30 @@ app.put('/api/community/comments/:id', async (req, res) => {
 });
 
 // DELETE a comment
-app.delete('/api/community/comments/:id', async (req, res) => {
+// The author OR a moderator/admin can delete the comment
+app.delete('/api/community/comments/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const deleteSql = 'DELETE FROM comments WHERE id = $1 RETURNING *';
-    const result = await client.query(deleteSql, [id]);
-    if (result.rows.length === 0) {
+
+    // 1) Find the comment
+    const checkSql = 'SELECT author_id FROM comments WHERE id = $1';
+    const checkRes = await client.query(checkSql, [id]);
+    if (checkRes.rows.length === 0) {
       return res.status(404).json({ message: 'Comment not found' });
     }
+    const comment = checkRes.rows[0];
+
+    // 2) The comment’s author OR mod/admin can delete
+    const isAuthor = (comment.author_id === req.user.userId);
+    const isModOrAdmin = (req.user.role === 'moderator' || req.user.role === 'admin');
+
+    if (!isAuthor && !isModOrAdmin) {
+      return res.status(403).json({ message: 'Forbidden: only author or mod/admin can delete' });
+    }
+
+    // 3) Delete the comment
+    const deleteSql = 'DELETE FROM comments WHERE id = $1 RETURNING *';
+    const result = await client.query(deleteSql, [id]);
     return res.json({ success: true, deleted: result.rows[0] });
   } catch (err) {
     console.error('Error in DELETE /api/community/comments/:id:', err);
