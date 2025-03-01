@@ -996,7 +996,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Immediately sign a token so they don't need to re-login
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      {
+        userId: user.id,
+        username: user.username, // <-- Include username
+        role: user.role
+      },
       "YOUR_JWT_SECRET",
       { expiresIn: "1d" }
     );
@@ -1034,7 +1038,11 @@ app.post('/api/auth/login', async (req, res) => {
     // Generate JWT or set session cookie
     // Example with JWT:
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      {
+        userId: user.id,
+        username: user.username,
+        role: user.role
+      },
       "YOUR_JWT_SECRET",
       { expiresIn: "1d" }
     );
