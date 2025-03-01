@@ -745,19 +745,31 @@ app.get('/api/community/posts/:id', async (req, res) => {
 });
 
 // CREATE a new post
-app.post('/api/community/posts', async (req, res) => {
+app.post('/api/community/posts', authMiddleware, async (req, res) => {
   try {
-    const { title, content, author_id, subcategory_id } = req.body;
-    if (!title || !content || !author_id) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    const { title, content, subcategory_id } = req.body;
+    // 1) Check if this user is visibleToOthers
+    const userResult = await client.query(
+      'SELECT visible_to_others FROM users WHERE id = $1',
+      [req.user.userId]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (userResult.rows[0].visible_to_others === false) {
+      return res.status(403).json({ message: 'You must be visible to others to create posts' });
     }
 
+    // 2) Now proceed with post creation
+    if (!title || !content) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
     const insertSql = `
       INSERT INTO posts (title, content, author_id, subcategory_id)
       VALUES ($1, $2, $3, $4)
       RETURNING *;
     `;
-    const values = [title, content, author_id, subcategory_id || null];
+    const values = [title, content, req.user.userId, subcategory_id || null];
     const result = await client.query(insertSql, values);
 
     return res.json(result.rows[0]);
@@ -961,6 +973,7 @@ app.delete('/api/community/comments/:id', async (req, res) => {
  ****************************************************/
 
 // POST /api/auth/register
+// POST /api/auth/register
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, password, role } = req.body;
@@ -968,20 +981,28 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).send("Missing username or password");
     }
 
-    // Hash the password
-    const saltRounds = 10; // or your config
+    const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
-    // Insert into users table
+    // Insert user
     const insertSql = `
       INSERT INTO users (username, password_hash, role)
       VALUES ($1, $2, $3)
       RETURNING id, username, role
     `;
     const values = [username, password_hash, role || 'user'];
-
     const result = await client.query(insertSql, values);
-    res.json(result.rows[0]);
+    const user = result.rows[0]; // { id, username, role }
+
+    // Immediately sign a token so they don't need to re-login
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      "YOUR_JWT_SECRET",
+      { expiresIn: "1d" }
+    );
+
+    // Return { token, user } or just token if you like
+    res.json({ token, user });
   } catch (err) {
     console.error("Register error:", err);
     res.status(500).send("Internal server error");
@@ -1056,33 +1077,99 @@ app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
   return res.json({ success: true, deleted: result.rows[0] });
 });
 
-app.post('/api/profile', authMiddleware, async (req, res) => {
-  // authMiddleware ensures we have req.user.userId
-  const userId = req.user.userId;
-  const { fullName, avatar, location } = req.body;
-
-  // Suppose we have columns in 'users' table for these:
-  //   full_name, avatar_url, location
-  // Or a separate 'profiles' table if you prefer a 1:1 relationship.
-
-  const updateSql = `
-    UPDATE users
-    SET full_name = $1,
-        avatar_url = $2,
-        location = $3
-    WHERE id = $4
-    RETURNING id, username, full_name, avatar_url, location;
-  `;
-  const values = [fullName, avatar, location, userId];
-
-  try {
-    const result = await client.query(updateSql, values);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+// app.post('/api/profile', authMiddleware, async (req, res) => {
+  app.post('/api/profile', authMiddleware, async (req, res) => {
+    const userId = req.user.userId;
+    const {
+      firstName,
+      lastName,
+      gender,
+      nationalities,
+      ethnicities,
+      birthday,
+      countryHome,
+      countryGrewUpIn,
+      bio,
+      visibleToOthers
+    } = req.body;
+  
+    // Validate or sanitize if needed (e.g. ensure arrays have <= 3 items, etc.)
+    // e.g. nationalities = nationalities.slice(0, 3);
+  
+    const updateSql = `
+      UPDATE users
+      SET
+        first_name        = $1,
+        last_name         = $2,
+        gender            = $3,
+        nationalities     = $4,
+        ethnicities       = $5,
+        birthday          = $6,
+        country_home      = $7,
+        country_grew_up_in= $8,
+        bio               = $9,
+        visible_to_others = $10
+      WHERE id = $11
+      RETURNING
+        id,
+        username,
+        first_name,
+        last_name,
+        gender,
+        nationalities,
+        ethnicities,
+        birthday,
+        country_home,
+        country_grew_up_in,
+        bio,
+        visible_to_others
+    `;
+    const values = [
+      firstName || null,
+      lastName || null,
+      gender || null,
+      Array.isArray(nationalities) ? nationalities : [],
+      Array.isArray(ethnicities) ? ethnicities : [],
+      birthday || null,
+      countryHome || null,
+      countryGrewUpIn || null,
+      bio || null,
+      typeof visibleToOthers === 'boolean' ? visibleToOthers : true,
+      userId
+    ];
+  
+    try {
+      const result = await client.query(updateSql, values);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      res.json(result.rows[0]); // Return the updated user
+    } catch (err) {
+      console.error("Profile error:", err);
+      res.status(500).json({ message: 'Internal server error' });
     }
-    res.json(result.rows[0]);
+  });
+
+// DELETE /api/users/:id
+// For example, only admins can delete users — so you might add authMiddleware + a role check
+app.delete('/api/users/:id', authMiddleware, async (req, res) => {
+  try {
+    // Optionally check if this user is an admin or the user being deleted
+    if (req.user.role !== "admin") {
+      return res.status(403).send("Forbidden");
+    }
+
+    const { id } = req.params;
+
+    const deleteSql = 'DELETE FROM users WHERE id = $1 RETURNING id, username';
+    const result = await client.query(deleteSql, [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found or already deleted' });
+    }
+
+    return res.json({ success: true, deleted: result.rows[0] });
   } catch (err) {
-    console.error("Profile error:", err);
+    console.error('Error deleting user:', err);
     res.status(500).json({ message: 'Internal server error' });
   }
 });
