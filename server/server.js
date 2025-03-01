@@ -592,6 +592,144 @@ app.delete('/api/discount-events/:id', async (req, res) => {
 //
 // If you have different column names, adapt the queries below accordingly.
 
+app.put('/api/users/:id/role', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;         // The user we want to modify
+    const { role: newRole } = req.body; // e.g. { "role": "moderator" }
+
+    // 1) Make sure newRole is valid
+    const allowedRoles = ['user', 'moderator', 'admin'];
+    if (!allowedRoles.includes(newRole)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
+
+    // 2) Find the target user so we can see their current role
+    const findUserSql = 'SELECT id, username, role FROM users WHERE id = $1';
+    const findRes = await client.query(findUserSql, [id]);
+    if (findRes.rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const targetUser = findRes.rows[0];
+
+    // 3) Check the role of the logged-in user (req.user.role)
+    const actingRole = req.user.role; // 'user', 'moderator', or 'admin'
+    if (actingRole === 'admin') {
+      // Admin can set any role for anyone
+      // No further checks needed
+    } else if (actingRole === 'moderator') {
+      // Moderator can only promote someone to 'moderator'
+      // (And only if the target is not already an admin.)
+      if (newRole !== 'moderator') {
+        return res.status(403).json({ message: "Forbidden: moderator can only set role=moderator" });
+      }
+      // If the target user is an admin, we definitely shouldn’t demote them
+      if (targetUser.role === 'admin') {
+        return res.status(403).json({ message: "Forbidden: cannot modify an admin's role" });
+      }
+      // Otherwise, user -> moderator is allowed
+    } else {
+      // A normal user can't change roles at all
+      return res.status(403).json({ message: "Forbidden: you do not have permission to change roles" });
+    }
+
+    // 4) Perform the update
+    const updateSql = `
+      UPDATE users
+      SET role = $2
+      WHERE id = $1
+      RETURNING id, username, role
+    `;
+    const updateRes = await client.query(updateSql, [id, newRole]);
+    const updatedUser = updateRes.rows[0];
+
+    res.json({ success: true, updatedUser });
+  } catch (err) {
+    console.error("Error changing user role:", err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+app.post('/api/users/:id/promoteToModerator', authMiddleware, async (req, res) => {
+  try {
+    // 1) Only admin or moderator can do this
+    if (req.user.role !== 'admin' && req.user.role !== 'moderator') {
+      return res.status(403).json({ message: 'Forbidden: only mods or admins' });
+    }
+
+    const { id } = req.params;
+
+    // 2) Check if the target user exists & is not an admin
+    const findUserSql = 'SELECT id, username, role FROM users WHERE id = $1';
+    const findRes = await client.query(findUserSql, [id]);
+    if (findRes.rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const targetUser = findRes.rows[0];
+    if (targetUser.role === 'admin') {
+      return res.status(403).json({ message: 'Cannot promote an admin to moderator' });
+    }
+
+    // 3) Update the user’s role to "moderator"
+    const updateSql = `
+      UPDATE users
+      SET role = 'moderator'
+      WHERE id = $1
+      RETURNING id, username, role
+    `;
+    const updateRes = await client.query(updateSql, [id]);
+    const updatedUser = updateRes.rows[0];
+
+    res.json({ success: true, updatedUser });
+  } catch (err) {
+    console.error("Error promoting to moderator:", err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+
+app.delete('/api/users/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1) Confirm the acting user is admin or moderator
+    if (req.user.role !== 'admin' && req.user.role !== 'moderator') {
+      return res.status(403).json({ message: 'Forbidden: only admin or moderator can delete users' });
+    }
+
+    // 2) Fetch the target user
+    const findUserSql = 'SELECT id, username, role FROM users WHERE id = $1';
+    const findRes = await client.query(findUserSql, [id]);
+    if (findRes.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const targetUser = findRes.rows[0];
+
+    // (Optional) If you want to prevent a moderator from deleting an admin, do so here:
+    if (req.user.role === 'moderator' && targetUser.role === 'admin') {
+      return res.status(403).json({ message: 'Forbidden: cannot delete an admin as a moderator' });
+    }
+
+    // 3) "Soft delete": Overwrite username, password_hash, role
+    const updateSql = `
+      UPDATE users
+      SET username       = '[DELETED USER]',
+          password_hash  = NULL,
+          role           = 'deleted'
+      WHERE id = $1
+      RETURNING id, username, role
+    `;
+    const updateRes = await client.query(updateSql, [id]);
+    const updatedUser = updateRes.rows[0];
+
+    // (Optional) If you actually want to physically delete them, do so after the update:
+    // But that would break the references in posts/comments unless you handle that carefully.
+
+    res.json({ success: true, user: updatedUser });
+  } catch (err) {
+    console.error('Error in DELETE /api/users/:id:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
 /*************************************************************
  *  SUBCATEGORIES (CRUD)
  *************************************************************/
@@ -1132,6 +1270,7 @@ function authMiddleware(req, res, next) {
   }
 }
 
+/*
 // Example route for DELETE /api/community/posts/:id
 app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
   // Check if role is "moderator" or "admin"
@@ -1147,7 +1286,7 @@ app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
     return res.status(404).json({ message: 'Post not found' });
   }
   return res.json({ success: true, deleted: result.rows[0] });
-});
+});*/
 
 // app.post('/api/profile', authMiddleware, async (req, res) => {
   app.post('/api/profile', authMiddleware, async (req, res) => {
@@ -1224,6 +1363,7 @@ app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
 
 // DELETE /api/users/:id
 // For example, only admins can delete users — so you might add authMiddleware + a role check
+/*
 app.delete('/api/users/:id', authMiddleware, async (req, res) => {
   try {
     // Optionally check if this user is an admin or the user being deleted
@@ -1244,7 +1384,7 @@ app.delete('/api/users/:id', authMiddleware, async (req, res) => {
     console.error('Error deleting user:', err);
     res.status(500).json({ message: 'Internal server error' });
   }
-});
+});*/
 
 /****************************************************
  *  FINALLY, START THE SERVER
