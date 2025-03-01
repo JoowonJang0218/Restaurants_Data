@@ -1056,6 +1056,37 @@ app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
   return res.json({ success: true, deleted: result.rows[0] });
 });
 
+app.post('/api/profile', authMiddleware, async (req, res) => {
+  // authMiddleware ensures we have req.user.userId
+  const userId = req.user.userId;
+  const { fullName, avatar, location } = req.body;
+
+  // Suppose we have columns in 'users' table for these:
+  //   full_name, avatar_url, location
+  // Or a separate 'profiles' table if you prefer a 1:1 relationship.
+
+  const updateSql = `
+    UPDATE users
+    SET full_name = $1,
+        avatar_url = $2,
+        location = $3
+    WHERE id = $4
+    RETURNING id, username, full_name, avatar_url, location;
+  `;
+  const values = [fullName, avatar, location, userId];
+
+  try {
+    const result = await client.query(updateSql, values);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Profile error:", err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 /****************************************************
  *  FINALLY, START THE SERVER
  ****************************************************/
