@@ -1535,6 +1535,65 @@ app.delete('/api/users/:id', authMiddleware, async (req, res) => {
   }
 });*/
 
+// GET /api/users/:id/profile
+// Allows anyone to view the user’s profile, EXCEPT if
+// 1) that user has visible_to_others=false
+// 2) and the viewer is neither the user, nor a moderator, nor an admin
+app.get('/api/users/:id/profile', authMiddleware, async (req, res) => {
+  try {
+    const targetUserId = parseInt(req.params.id, 10);
+    if (!targetUserId) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    // 1) Find the target user
+    const userSql = `
+      SELECT
+        id,
+        username,
+        first_name,
+        last_name,
+        gender,
+        nationalities,
+        ethnicities,
+        birthday,
+        country_home,
+        country_grew_up_in,
+        bio,
+        visible_to_others,
+        role
+      FROM users
+      WHERE id = $1
+    `;
+    const { rows } = await client.query(userSql, [targetUserId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const targetUser = rows[0];
+
+    // 2) Check if they have visible_to_others=false
+    //    If so, only the user themselves, or a moderator, or an admin can see
+    if (targetUser.visible_to_others === false) {
+      // The viewer is "req.user" from the JWT
+      const viewerId = req.user.userId;
+      const viewerRole = req.user.role; // 'admin', 'moderator', 'user', etc.
+      const isOwner = (viewerId === targetUser.id);
+      const isModOrAdmin = (viewerRole === 'moderator' || viewerRole === 'admin');
+      if (!isOwner && !isModOrAdmin) {
+        return res.status(403).json({ message: 'This profile is not visible.' });
+      }
+    }
+
+    // 3) Return the user’s profile
+    //    Optionally omit sensitive fields, or that’s up to you
+    return res.json(targetUser);
+
+  } catch (err) {
+    console.error('Error in GET /api/users/:id/profile:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 /****************************************************
  *  FINALLY, START THE SERVER
  ****************************************************/
