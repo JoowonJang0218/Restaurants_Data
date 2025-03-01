@@ -2,6 +2,8 @@ const express = require('express');
 const axios = require('axios');
 const { Client } = require('pg');
 const cors = require('cors');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = 3000;
@@ -952,6 +954,106 @@ app.delete('/api/community/comments/:id', async (req, res) => {
     console.error('Error in DELETE /api/community/comments/:id:', err);
     res.status(500).json({ message: 'Internal server error' });
   }
+});
+
+/****************************************************
+ *  Authorization routes
+ ****************************************************/
+
+// POST /api/auth/register
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    if (!username || !password) {
+      return res.status(400).send("Missing username or password");
+    }
+
+    // Hash the password
+    const saltRounds = 10; // or your config
+    const password_hash = await bcrypt.hash(password, saltRounds);
+
+    // Insert into users table
+    const insertSql = `
+      INSERT INTO users (username, password_hash, role)
+      VALUES ($1, $2, $3)
+      RETURNING id, username, role
+    `;
+    const values = [username, password_hash, role || 'user'];
+
+    const result = await client.query(insertSql, values);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Register error:", err);
+    res.status(500).send("Internal server error");
+  }
+});
+
+// POST /api/auth/login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).send("Missing username or password");
+    }
+
+    // Find user by username
+    const userSql = `SELECT * FROM users WHERE username = $1`;
+    const userRes = await client.query(userSql, [username]);
+    if (userRes.rows.length === 0) {
+      return res.status(400).send("Invalid credentials");
+    }
+    const user = userRes.rows[0];
+
+    // Compare hashed passwords
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      return res.status(400).send("Invalid credentials");
+    }
+
+    // Generate JWT or set session cookie
+    // Example with JWT:
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      "YOUR_JWT_SECRET",
+      { expiresIn: "1d" }
+    );
+    res.json({ token });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).send("Internal server error");
+  }
+});
+
+// Example middleware to parse JWT from headers
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).send("No token");
+  const token = authHeader.split(' ')[1]; // "Bearer <token>"
+  
+  try {
+    const decoded = jwt.verify(token, "YOUR_JWT_SECRET");
+    req.user = decoded; // { userId, role, iat, exp }
+    next();
+  } catch(err) {
+    return res.status(401).send("Invalid token");
+  }
+}
+
+// Example route for DELETE /api/community/posts/:id
+app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
+  // Check if role is "moderator" or "admin"
+  if (req.user.role !== "moderator" && req.user.role !== "admin") {
+    return res.status(403).send("Forbidden");
+  }
+
+  // Then proceed to delete the post
+  const { id } = req.params;
+  const deleteSql = 'DELETE FROM posts WHERE id = $1 RETURNING *';
+  const result = await client.query(deleteSql, [id]);
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: 'Post not found' });
+  }
+  return res.json({ success: true, deleted: result.rows[0] });
 });
 
 /****************************************************
