@@ -762,6 +762,32 @@ app.get('/api/community/subcategories/:id', async (req, res) => {
   }
 });
 
+app.get('/api/community/trending', async (req, res) => {
+  try {
+    const sql = `
+      SELECT
+        p.id,
+        p.title,
+        p.upvotes,
+        p.downvotes,
+        s.name AS subcat_name,
+        (
+          (p.upvotes + 1)::float / (p.downvotes + 1)::float
+        ) AS ratio
+      FROM posts p
+      LEFT JOIN subcategories s ON p.subcategory_id = s.id
+      WHERE p.created_at >= date_trunc('day', now())  -- "today" only
+      ORDER BY ratio DESC
+      LIMIT 2
+    `;
+    const { rows } = await client.query(sql);
+    res.json(rows);
+  } catch (err) {
+    console.error("Error in GET /api/community/trending:", err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 // CREATE a new subcategory
 app.post('/api/community/subcategories', async (req, res) => {
   try {
@@ -995,44 +1021,167 @@ app.delete('/api/community/posts/:id', authMiddleware, async (req, res) => {
 });
 
 // UPVOTE a post
-app.post('/api/community/posts/:id/upvote', async (req, res) => {
+// POST /api/community/posts/:id/upvote
+app.post('/api/community/posts/:id/upvote', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    const updateSql = `
-      UPDATE posts
-      SET upvotes = upvotes + 1
-      WHERE id = $1
-      RETURNING upvotes;
-    `;
-    const result = await client.query(updateSql, [id]);
-    if (result.rowCount === 0) {
+    const postId = parseInt(req.params.id, 10);
+    const userId = req.user.userId; // from the token
+    if (!postId) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+
+    // 1) Check if the post exists
+    const postCheck = await client.query('SELECT id, upvotes, downvotes FROM posts WHERE id = $1', [postId]);
+    if (postCheck.rows.length === 0) {
       return res.status(404).json({ message: 'Post not found' });
     }
-    return res.json({ upvotes: result.rows[0].upvotes });
+    const post = postCheck.rows[0];
+
+    // 2) Check if there's already a vote row in "post_votes"
+    const voteCheck = await client.query(
+      'SELECT vote_type FROM post_votes WHERE user_id = $1 AND post_id = $2',
+      [userId, postId]
+    );
+
+    if (voteCheck.rows.length === 0) {
+      // No prior vote => Insert new row (+1)
+      await client.query('BEGIN'); // start transaction
+
+      await client.query(
+        'INSERT INTO post_votes (user_id, post_id, vote_type) VALUES ($1, $2, $3)',
+        [userId, postId, +1]
+      );
+
+      // increment the "upvotes" in posts
+      const newUpvotes = post.upvotes + 1;
+      await client.query(
+        'UPDATE posts SET upvotes = $1 WHERE id = $2',
+        [newUpvotes, postId]
+      );
+
+      await client.query('COMMIT');
+
+      return res.json({ success: true, upvotes: newUpvotes, message: 'Upvoted!' });
+
+    } else {
+      // There's an existing vote row
+      const existingVote = voteCheck.rows[0].vote_type; // +1 or -1
+
+      if (existingVote === +1) {
+        // They already upvoted => do nothing or allow un-vote logic
+        return res.json({ success: false, message: 'Already upvoted this post.' });
+      } else {
+        // They had a -1 (downvote) and want to upvote now => switch
+        // So we remove 1 from downvotes, add 1 to upvotes
+        await client.query('BEGIN');
+
+        await client.query(
+          'UPDATE post_votes SET vote_type = $1 WHERE user_id = $2 AND post_id = $3',
+          [+1, userId, postId]
+        );
+
+        // decrement post.downvotes, increment post.upvotes
+        const newUpvotes = post.upvotes + 1;
+        const newDownvotes = post.downvotes - 1;
+        await client.query(
+          'UPDATE posts SET upvotes = $1, downvotes = $2 WHERE id = $3',
+          [newUpvotes, newDownvotes, postId]
+        );
+
+        await client.query('COMMIT');
+
+        return res.json({ success: true, upvotes: newUpvotes, downvotes: newDownvotes, message: 'Changed vote to upvote.' });
+      }
+    }
+
   } catch (err) {
-    console.error('Error in POST /api/community/posts/:id/upvote:', err);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error in upvote route:", err);
+    await client.query('ROLLBACK').catch(() => {}); // in case transaction was started
+    return res.status(500).json({ message: 'Internal server error' });
   }
 });
 
 // DOWNVOTE a post
-app.post('/api/community/posts/:id/downvote', async (req, res) => {
+app.post('/api/community/posts/:id/downvote', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    const updateSql = `
-      UPDATE posts
-      SET downvotes = downvotes + 1
-      WHERE id = $1
-      RETURNING downvotes;
-    `;
-    const result = await client.query(updateSql, [id]);
-    if (result.rowCount === 0) {
+    const postId = parseInt(req.params.id, 10);
+    const userId = req.user.userId; // from the token
+    if (!postId) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
+
+    // 1) Check if the post exists
+    const postCheck = await client.query('SELECT id, upvotes, downvotes FROM posts WHERE id = $1', [postId]);
+    if (postCheck.rows.length === 0) {
       return res.status(404).json({ message: 'Post not found' });
     }
-    return res.json({ downvotes: result.rows[0].downvotes });
+    const post = postCheck.rows[0];
+
+    // 2) Check if there's already a vote row in "post_votes"
+    const voteCheck = await client.query(
+      'SELECT vote_type FROM post_votes WHERE user_id = $1 AND post_id = $2',
+      [userId, postId]
+    );
+
+    if (voteCheck.rows.length === 0) {
+      // No prior vote => Insert new row (-1)
+      await client.query('BEGIN');
+
+      await client.query(
+        'INSERT INTO post_votes (user_id, post_id, vote_type) VALUES ($1, $2, $3)',
+        [userId, postId, -1]
+      );
+
+      // increment the "downvotes" in posts
+      const newDownvotes = post.downvotes + 1;
+      await client.query(
+        'UPDATE posts SET downvotes = $1 WHERE id = $2',
+        [newDownvotes, postId]
+      );
+
+      await client.query('COMMIT');
+
+      return res.json({ success: true, downvotes: newDownvotes, message: 'Downvoted!' });
+
+    } else {
+      // There's an existing vote row
+      const existingVote = voteCheck.rows[0].vote_type; // +1 or -1
+
+      if (existingVote === -1) {
+        // Already downvoted => do nothing (or you could remove the vote)
+        return res.json({ success: false, message: 'Already downvoted this post.' });
+      } else {
+        // They had a +1 (upvote) and want to downvote now => switch
+        // So we remove 1 from upvotes, add 1 to downvotes
+        await client.query('BEGIN');
+
+        await client.query(
+          'UPDATE post_votes SET vote_type = $1 WHERE user_id = $2 AND post_id = $3',
+          [-1, userId, postId]
+        );
+
+        const newUpvotes = post.upvotes - 1;
+        const newDownvotes = post.downvotes + 1;
+        await client.query(
+          'UPDATE posts SET upvotes = $1, downvotes = $2 WHERE id = $3',
+          [newUpvotes, newDownvotes, postId]
+        );
+
+        await client.query('COMMIT');
+
+        return res.json({
+          success: true,
+          upvotes: newUpvotes,
+          downvotes: newDownvotes,
+          message: 'Changed vote to downvote.'
+        });
+      }
+    }
+
   } catch (err) {
-    console.error('Error in POST /api/community/posts/:id/downvote:', err);
-    res.status(500).json({ message: 'Internal server error' });
+    console.error("Error in downvote route:", err);
+    await client.query('ROLLBACK').catch(() => {});
+    return res.status(500).json({ message: 'Internal server error' });
   }
 });
 
