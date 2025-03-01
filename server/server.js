@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const { Client } = require('pg');
 const cors = require('cors');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const app = express();
